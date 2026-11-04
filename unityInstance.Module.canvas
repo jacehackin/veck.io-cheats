@@ -1,4 +1,0 @@
-const isUnity = this.id === 'unity-canvas';
-const area = (this.clientWidth || 0) * (this.clientHeight || 0);
-const gArea = gameCanvas ? (gameCanvas.clientWidth || 0) * (gameCanvas.clientHeight || 0) : 0;
-if (!gameCanvas || isUnity || area > gArea) { ... }
