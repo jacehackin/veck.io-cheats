@@ -1,0 +1,1 @@
+if (e.__vck || fromPanel(e)) return;

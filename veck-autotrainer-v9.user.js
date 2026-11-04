@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Veck.io Auto-Trainer v9
 // @namespace    venice.ai
-// @version      9.3.0
+// @version      9.5.0
 // @description  ESP + aimbot + ammo freeze + fly for veck.io. Cold boot — everything off. Alt+F fly, Alt+X pause, Alt+G auto-win, Alt+D diag, Alt+C arm.
 // @author       Venice
 // @match        *://*/*
@@ -33,19 +33,17 @@
   /* DEFAULTS — every gameplay feature is OFF. Nothing auto-arms.       */
   /* ------------------------------------------------------------------ */
   const D = {
-    /* master + modes — all false on cold boot */
     master: false, autoWin: false, paused: false,
     esp: false, aimbot: false, ammo: false, autoAmmo: false,
-    aimOnlyFiring: true,          /* if aim is enabled, only hands-on */
-    plates: true, bodies: true,   /* sub-detectors — gated by esp anyway */
-    anyColor: false,              /* most false-positive prone — off */
+    aimOnlyFiring: true,
+    plates: true, bodies: true,
+    anyColor: false,
     hudSuppress: true, matchOnly: true,
     fly: false, flyMode: 'hop', flySpeed: 0.35,
-    /* tuning */
     fov: 420, smooth: 2.5, sens: 1, gate: 26, stick: 130, maxStep: 70,
     tol: 60, minBlob: 4, fps: 24, renderFps: 60, readCap: 1000,
     colors: ['#ff0044', '#00e5ff'], colorsOn: [true, true],
-    lockColors: true,             /* true = don't auto-learn; user clicks "+" or "Auto colors" */
+    lockColors: true,
     ignoreHud: true,
     capMode: 'auto', aimEvent: 'both', invX: 1, invY: 1,
     showPreview: false, showDiag: false
@@ -62,7 +60,6 @@
       else if (typeof dv === 'string') { if (typeof sv === 'string') CFG[k] = sv; }
     }
   });
-  /* NO forced overrides. No CFG.master = true. No CFG.autoWin = true. */
   CFG.fps = Math.max(1, Math.min(120, CFG.fps || 24));
   CFG.readCap = Math.max(320, Math.min(2400, CFG.readCap || 1000));
   const save = () => safe(() => localStorage.setItem('veck_v9', JSON.stringify(CFG)));
@@ -232,9 +229,12 @@
   }, 1000);
 
   /* ---------- state ---------- */
+  const MATCH_HOLD_MS = 12000;
+  let lastMatchTouchAt = 0;
+
   let overlay, oCtx, cap, capCtx, pixBuf, pixImg, prev, prevS, lastGood = null;
   let blobs = [], targetKey = null, tRaw = 1e9, tSince = 0, tLast = 0, lastSide = 0, gain = 1, lastGap = 1e9, probe = 0;
-  let realFire = false, autoFireOn = false, entered = false, holdCount = 0;
+  let realFire = false, autoFireOn = false, holdCount = 0;
   let pickArmed = false, pickIdx = 0, lastHop = 0, upHeld = false, downHeld = false;
   let lastCap = 0, fpsAcc = 0, fpsN = 0, rc = null, diagT = 0, lastPrev = 0, lastRender = 0;
   let virtX = innerWidth / 2, virtY = innerHeight / 2;
@@ -243,6 +243,12 @@
   let lastCal = 0, moved = 0, lastMove = 0, lastSrc = '-';
   let frameCanvas = null, fctx = null, pvCtx = null;
   let sGrid = null, sW = 0, sH = 0, sMotion = 0;
+
+  function inMatchNow() {
+    if (document.pointerLockElement) return true;
+    return lastMatchTouchAt > 0 && (performance.now() - lastMatchTouchAt) < MATCH_HOLD_MS;
+  }
+  function touchMatch() { lastMatchTouchAt = performance.now(); }
 
   const hex2rgb = h => { const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h || ''); return m ? [+('0x' + m[1]), +('0x' + m[2]), +('0x' + m[3])] : [255, 255, 255]; };
   function hsvHex(h, s, v) {
@@ -711,7 +717,8 @@
       if (c >= 0 && c < 4) { lastReload = performance.now(); sendKey('KeyR', 'r'); }
     }
 
-    const inMatch = !CFG.matchOnly || entered || !!document.pointerLockElement;
+    /* match gate uses the expiring timestamp — no one-way latch */
+    const inMatch = !CFG.matchOnly || inMatchNow();
     const ok = inMatch && !!targetKey && tRaw <= CFG.gate && !realFire;
     holdCount = ok ? holdCount + 1 : 0;
     const want = ok && holdCount >= 2;
@@ -725,8 +732,6 @@
   const FLY = { addr: -1, y: 0, phase: 'idle', t0: 0, n: 0, A: null, B: null, P: null, L: null };
 
   function flyClear() { FLY.addr = -1; FLY.phase = 'idle'; FLY.A = FLY.B = FLY.P = FLY.L = null; FLY.n = 0; }
-
-  function inMatchNow() { return entered || !!document.pointerLockElement; }
 
   function flyCalibrate() {
     if (CFG.matchOnly && !inMatchNow()) return say('Refused — click the game first (join a match)');
@@ -743,7 +748,7 @@
       A[n] = i; B[n] = v; P[n] = v; L[n] = v; n++;
     }
     if (n < 20) { flyClear(); return say('Too few floats — retry in-match'); }
-    FLY.A = A; FLY.B = B; FLY.P = P;FLY.L = L; FLY.n = n;
+    FLY.A = A; FLY.B = B; FLY.P = P; FLY.L = L; FLY.n = n;
     FLY.phase = 'sampling'; FLY.t0 = performance.now();
   }
 
@@ -886,7 +891,7 @@
         .status.err{color:#ff6b6b}
         .diag{font-size:9.5px;color:#6a8494;white-space:pre;background:#0a0e11;border-radius:5px;padding:5px;margin-top:4px;line-height:1.35;overflow-x:auto;cursor:pointer}
         .err{font-size:10px;color:#ff6b6b;background:#1a0c0c;border:1px solid #43181a;border-radius:5px;padding:4px 6px;margin-top:6px;word-break:break-all}
-        .foot{padding:6px 10px;background:#0d1216;border-top:1px solid #1a242c;font-size:10px;color:#5d7484;display:flex;justify-content:space-between;gap:6px}
+        .foot{padding:6px 10px;background:#0d1216;border-top:1px solid #1a242c;font-size:10px;color:#5d7484;display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap}
         kbd{background:#1a242c;border-radius:3px;padding:1px 4px;color:#9fb3c0}
         .hidden{display:none!important}
         .panel.collapsed{width:auto}
@@ -1043,6 +1048,7 @@
       if (oCtx && overlay) oCtx.clearRect(0, 0, overlay.width, overlay.height);
       CFG.autoWin = false; bak.armed = false;
       CFG.esp = false; CFG.aimbot = false; CFG.ammo = false; CFG.autoAmmo = false; CFG.fly = false;
+      lastMatchTouchAt = 0;
     }
     save();
     if (ui) { ui.sync(); ui.status(CFG.master ? 'ARMED — features ready but still off' : 'Disarmed'); }
@@ -1088,8 +1094,9 @@
     return false;
   };
 
+  /* KEYBOARD: hotkeys fire from ANY focus state. No fromPanel guard. */
   safe(() => addEventListener('keydown', e => {
-    if (e.__vck || fromPanel(e)) return;
+    if (e.__vck) return;
     if (e.code === 'Space') upHeld = true;
     if (e.code === 'ControlLeft' || e.code === 'ControlRight') downHeld = true;
     if (!e.altKey) return;
@@ -1116,37 +1123,49 @@
 
   safe(() => addEventListener('blur', () => { realFire = false; upHeld = false; downHeld = false; }), 'blur');
 
+  /* MOUSEDOWN: click on panel ignored; colour pick works cold; canvas detected via composedPath */
   safe(() => addEventListener('mousedown', e => {
     if (e.__vck || fromPanel(e)) return;
     realFire = true;
+
+    /* pick works even when disarmed — consumed before the master gate */
+    if (pickArmed) {
+      pickArmed = false;
+      if (ui) { const b = ui.$('pick'); if (b) b.classList.remove('act'); }
+      const img = lastGood;
+      if (img && gameCanvas) {
+        const r = gameCanvas.getBoundingClientRect();
+        const fx = (e.clientX - r.left) / Math.max(1, r.width);
+        const fy = (e.clientY - r.top) / Math.max(1, r.height);
+        const px = Math.max(0, Math.min(img.width - 1, Math.round(((fx - reg.fx) / reg.fw) * img.width)));
+        const py = Math.max(0, Math.min(img.height - 1, Math.round(((fy - reg.fy) / reg.fh) * img.height)));
+        const i = ((py * img.width) + px) << 2;
+        const hex = '#' + [img.data[i], img.data[i + 1], img.data[i + 2]].map(v => (v || 0).toString(16).padStart(2, '0')).join('');
+        CFG.colors[pickIdx] = hex; CFG.colorsOn[pickIdx] = true; CFG.lockColors = true;
+        pickIdx = pickIdx ? 0 : 1; save();
+        if (ui) { ui.status('Picked ' + hex); ui.sync(); }
+      } else if (ui) ui.status('No frame to sample — arm or enable preview first');
+      return;
+    }
+
     if (!CFG.master) return;
-    const onCanvas = gameCanvas && gameCanvas.contains(e.target);
-    if (onCanvas) { entered = true; recenterCursor(); }
+
+    const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+    const onCanvas = (gameCanvas && path.includes(gameCanvas)) || (gameCanvas && gameCanvas.contains(e.target));
+    if (onCanvas) { touchMatch(); recenterCursor(); }
     if (onCanvas || document.pointerLockElement) safe(ammoOnFire, 'ammofire');
-    if (!pickArmed) return;
-    pickArmed = false;
-    if (ui) { const b = ui.$('pick'); if (b) b.classList.remove('act'); }
-    if (!ui) return;
-    const img = lastGood;
-    if (img && gameCanvas) {
-      const r = gameCanvas.getBoundingClientRect();
-      const fx = (e.clientX - r.left) / Math.max(1, r.width);
-      const fy = (e.clientY - r.top) / Math.max(1, r.height);
-      const px = Math.max(0, Math.min(img.width - 1, Math.round(((fx - reg.fx) / reg.fw) * img.width)));
-      const py = Math.max(0, Math.min(img.height - 1, Math.round(((fy - reg.fy) / reg.fh) * img.height)));
-      const i = ((py * img.width) + px) << 2;
-      const hex = '#' + [img.data[i], img.data[i + 1], img.data[i + 2]].map(v => (v || 0).toString(16).padStart(2, '0')).join('');
-      CFG.colors[pickIdx] = hex; CFG.colorsOn[pickIdx] = true; CFG.lockColors = true;
-      pickIdx = pickIdx ? 0 : 1; save(); ui.status('Picked ' + hex);
-    } else ui.status('No frame to sample');
-    ui.sync();
   }, true), 'mdown');
 
-  safe(() => addEventListener('mouseup', e => { if (e.__vck || fromPanel(e)) return; realFire = false; }, true), 'mup');
+  /* MOUSEUP: clears realFire from ANY focus state, including panel drags */
+  safe(() => addEventListener('mouseup', e => { if (e.__vck) return; realFire = false; }, true), 'mup');
 
   safe(() => document.addEventListener('pointerlockchange', () => {
-    if (document.pointerLockElement) { entered = true; recenterCursor(); }
-    else { realFire = false; if (autoFireOn) { sendBtn(false); autoFireOn = false; } }
+    if (document.pointerLockElement) { touchMatch(); recenterCursor(); }
+    else {
+      realFire = false;
+      lastMatchTouchAt = 0;
+      if (autoFireOn) { sendBtn(false); autoFireOn = false; }
+    }
   }), 'plc');
 
   /* ---------- loops ---------- */
@@ -1155,12 +1174,14 @@
     const el = ui.$('diag'); if (!el) return;
     const f = FLY.addr < 0 ? null : heapF();
     const c = gameCanvas;
+    const inMatch = inMatchNow();
+    const touchAge = lastMatchTouchAt ? Math.round(performance.now() - lastMatchTouchAt) : -1;
     el.textContent =
       `cold ${!CFG.master ? 1 : 0} armed ${CFG.master ? 1 : 0} rage ${CFG.autoWin ? 1 : 0} pause ${CFG.paused ? 1 : 0}\n` +
       `canvas ${c ? (c.id || c.tagName) + ' ' + (c.clientWidth | 0) + 'x' + (c.clientHeight | 0) : 'none'} gl ${gl ? 1 : 0} fb ${gl && CTX.get(gl) ? (CTX.get(gl).fb ? 1 : 0) : '-'}\n` +
       `src ${lastSrc} hook ${hooked ? 1 : 0} postraf ${Math.round(performance.now() - lastPostRaf)}ms\n` +
       `blobs ${blobs.length} plate ${blobs.filter(b => b.kind === 'plate').length} hot ${blobs.filter(b => b.kind === 'hot').length} dist ${Math.round(tRaw)} age ${Math.round(performance.now() - tLast)}\n` +
-      `gain ${gain.toFixed(2)} ev ${CFG.aimEvent} inv ${CFG.invX}/${CFG.invY} lock ${document.pointerLockElement ? 1 : 0} in ${entered ? 1 : 0}\n` +
+      `gain ${gain.toFixed(2)} ev ${CFG.aimEvent} inv ${CFG.invX}/${CFG.invY} lock ${document.pointerLockElement ? 1 : 0} match ${inMatch ? 1 : 0} touch ${touchAge}ms\n` +
       `heap ${MEM.buf ? (MEM.buf.byteLength / 1048576).toFixed(0) + 'MB' : 'no'} ammo ${AM.phase}${MEM.frozen ? ' FROZEN' : ''}\n` +
       `fly ${CFG.fly ? CFG.flyMode : 'off'} addr ${FLY.addr} y ${f && FLY.addr >= 0 ? (f[FLY.addr >> 2] || 0).toFixed(2) : '-'} mot ${sMotion}\n` +
       `col ${CFG.colors[0]} ${CFG.colors[1]} read ${CFG.readCap}\n` +
@@ -1186,7 +1207,6 @@
     pvCtx.drawImage(frameCanvas, 0, 0, pv.width, pv.height);
   }
 
-  /* capture loop: keep RAF alive but do the least work possible when cold */
   function captureLoop(t) {
     requestAnimationFrame(captureLoop);
     try {
@@ -1213,9 +1233,6 @@
         aim();
         autoFireTick();
         flyTick();
-      } else if (CFG.showPreview && img) {
-        /* preview-only path: allow sampling the frame without arming */
-        lastGood = img;
       }
 
       preview();
@@ -1234,7 +1251,6 @@
     } catch (e) { pushErr('ren: ' + ((e && e.message) || e)); }
   }
 
-  /* ---------- boot: does NOT enable anything ---------- */
   function boot() {
     if (booted) return;
     booted = true;

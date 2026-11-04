@@ -1,0 +1,9 @@
+1. Script loads. Panel shows. Dot is gray. Nothing on screen.
+2. Alt+C        → master arms (green dot). Crosshair + FOV ring appear. Still no ESP/AIM.
+3. Click canvas → entered = true. matchOnly satisfied.
+4. Alt+X        → pause input if you want to look around menus.
+5. Alt+G        → AUTO-WIN: enables ESP + aim + ammo + autofire + FOV 1500.
+   Alt+G again  → reverts to whatever you had before.
+6. Alt+F        → fly toggle (hop mode spams Space, hover needs calibration first)
+7. Alt+D        → diag block
+8. Alt+W        → collapse/expand panel
